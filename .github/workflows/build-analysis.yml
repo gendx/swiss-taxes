@@ -1,0 +1,16 @@
+on: [push, pull_request]
+name: Build
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      RUSTFLAGS: "-D warnings"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - name: Install dependencies
+        run: sudo apt update && sudo apt install -y libfontconfig1-dev --no-install-recommends
+
+      - name: Build
+        working-directory: ./analysis
+        run: cargo build --verbose --all

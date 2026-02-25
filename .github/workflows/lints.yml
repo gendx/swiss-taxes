@@ -1,0 +1,26 @@
+on: [push, pull_request]
+name: Lints on nightly toolchain
+jobs:
+  clippy:
+    runs-on: ubuntu-latest
+    env:
+      RUSTFLAGS: "-D warnings"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: clippy
+      - name: Install dependencies
+        run: sudo apt update && sudo apt install -y libfontconfig1-dev --no-install-recommends
+      - name: Create placeholder data
+        working-directory: ./wasm
+        run: |
+          mkdir -p data
+          touch data/tables.db
+
+      - name: Check Clippy lints (analysis)
+        working-directory: ./analysis
+        run: cargo clippy --verbose --all
+      - name: Check Clippy lints (wasm)
+        working-directory: ./wasm
+        run: cargo clippy --verbose --all

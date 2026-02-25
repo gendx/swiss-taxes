@@ -1,0 +1,23 @@
+on: [push, pull_request]
+name: Build
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      RUSTFLAGS: "-D warnings"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          targets: wasm32-unknown-unknown
+      - name: Install wasm-pack
+        run: cargo install wasm-pack
+      - name: Create placeholder data
+        working-directory: ./wasm
+        run: |
+          mkdir -p data
+          touch data/tables.db
+
+      - name: Build
+        working-directory: ./wasm
+        run: wasm-pack build --target web --release --no-typescript --no-pack

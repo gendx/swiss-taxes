@@ -1,0 +1,17 @@
+on: [push, pull_request]
+name: Formatting on nightly toolchain
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rustfmt
+
+      - name: Check formatting (analysis)
+        working-directory: ./analysis
+        run: cargo fmt --verbose -- --check --verbose
+      - name: Check formatting (wasm)
+        working-directory: ./wasm
+        run: cargo fmt --verbose -- --check --verbose

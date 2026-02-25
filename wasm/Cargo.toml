@@ -1,0 +1,27 @@
+[package]
+name = "wasm-taxes"
+description = "Tool to display tax rates of Switzerland"
+version = "0.1.0"
+authors = ["Guillaume Endignoux <ggendx@gmail.com>"]
+license = "MIT"
+repository = "https://github.com/gendx/swiss-taxes"
+edition = "2024"
+rust-version = "1.85.0"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+plotters = { version = "0.3.7", default-features = false }
+plotters-canvas = "0.3.1"
+postcard = "1.1.3"
+serde = "1.0.228"
+wasm-bindgen = "0.2.111"
+web-sys = { version = "0.3.88", features = ["console", "HtmlCanvasElement"] }
+
+[profile.release]
+codegen-units = 1
+lto = true
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = ['-O4', '--strip-producers']

@@ -1,0 +1,22 @@
+[package]
+name = "taxes"
+description = "Tool to analyze tax rates in Switzerland"
+version = "0.1.0"
+authors = ["Guillaume Endignoux <ggendx@gmail.com>"]
+license = "MIT"
+repository = "https://github.com/gendx/swiss-taxes"
+edition = "2024"
+rust-version = "1.87.0"
+
+[dependencies]
+anyhow = "1.0.102"
+env_logger = "0.11.9"
+log = "0.4.29"
+nom = "8.0.0"
+plotters = { version = "0.3.7", default-features = false, features = ["bitmap_backend", "bitmap_encoder", "ttf"] }
+postcard = { version = "1.1.3", features = ["use-std"] }
+rand = "0.10.0"
+reqwest = { version = "0.13.2", features = ["json"] }
+serde = "1.0.228"
+serde_json = "1.0.149"
+tokio = { version = "1.49.0", features = ["rt-multi-thread"] }
