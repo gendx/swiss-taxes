@@ -22,6 +22,7 @@ web-sys = { version = "0.3.88", features = ["console", "HtmlCanvasElement"] }
 [profile.release]
 codegen-units = 1
 lto = true
+panic = "immediate-abort"
 
 [package.metadata.wasm-pack.profile.release]
 wasm-opt = ['-O4', '--strip-producers']

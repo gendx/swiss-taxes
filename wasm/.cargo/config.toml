@@ -1,0 +1,3 @@
+[unstable]
+build-std = ["panic_abort", "std"]
+panic-immediate-abort = true
