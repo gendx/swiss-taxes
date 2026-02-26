@@ -119,21 +119,61 @@ fn get_diff(
 
 fn colorize(diff: f64) -> RGBColor {
     if (-10.0..=10.0).contains(&diff) {
-        RGBColor(128, 128, 128)
+        RGBColor(0xc0, 0xc0, 0xc0)
+    } else if (-3000.0..=-10.0).contains(&diff) {
+        interpolate(
+            RGBColor(0xc0, 0xa0, 0xa0),
+            RGBColor(0xe0, 0xa0, 0x00),
+            -10.0,
+            -3000.0,
+            diff,
+        )
+    } else if (-8000.0..=-3000.0).contains(&diff) {
+        interpolate(
+            RGBColor(0xe0, 0xa0, 0x00),
+            RGBColor(0xc0, 0x40, 0x40),
+            -3000.0,
+            -8000.0,
+            diff,
+        )
     } else if diff < 0.0 {
         interpolate(
-            RGBColor(192, 0, 0),
-            RGBColor(128, 96, 96),
-            -5000.0,
-            0.0,
+            RGBColor(0xc0, 0x40, 0x40),
+            RGBColor(0xa0, 0x60, 0x80),
+            -8000.0,
+            -12000.0,
+            diff,
+        )
+    } else if (10.0..=3000.0).contains(&diff) {
+        interpolate(
+            RGBColor(0x80, 0xa0, 0xc0),
+            RGBColor(0x20, 0xa0, 0xa0),
+            10.0,
+            3000.0,
+            diff,
+        )
+    } else if (3000.0..=6000.0).contains(&diff) {
+        interpolate(
+            RGBColor(0x20, 0xa0, 0xa0),
+            RGBColor(0x80, 0xc0, 0x00),
+            3000.0,
+            6000.0,
+            diff,
+        )
+    } else if (6000.0..=9000.0).contains(&diff) {
+        interpolate(
+            RGBColor(0x80, 0xc0, 0x00),
+            RGBColor(0x40, 0xc0, 0x00),
+            6000.0,
+            9000.0,
             diff,
         )
     } else if diff > 0.0 {
         interpolate(
-            RGBColor(96, 128, 96),
-            RGBColor(0, 128, 0),
-            0.0,
-            5000.0,
+            RGBColor(0x40, 0xc0, 0x00),
+            RGBColor(0x50, 0xa0, 0x60),
+            9000.0,
+            12000.0,
             diff,
         )
     } else {
