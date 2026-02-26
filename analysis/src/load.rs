@@ -3,13 +3,13 @@ use crate::table::{EvalPolicy, Table};
 use anyhow::{Result, anyhow};
 use log::{debug, trace};
 use serde::Serialize;
-use std::collections::HashMap;
 use std::collections::hash_map::Entry;
+use std::collections::{BTreeMap, HashMap};
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
 
 #[derive(Serialize)]
-pub struct Database(HashMap<u32, Year>);
+pub struct Database(BTreeMap<u32, Year>);
 
 impl Database {
     pub fn new(years: impl Iterator<Item = u32>) -> Result<Self> {
@@ -27,14 +27,14 @@ impl Database {
 }
 
 #[derive(Serialize)]
-pub struct Year(HashMap<String, CantonalBase>);
+pub struct Year(BTreeMap<String, CantonalBase>);
 
 impl Year {
     fn new(year: u32) -> Result<Self> {
         let rates = get_cantonal_rates(year)?;
         let scales = get_cantonal_scales(year)?;
 
-        let mut map = HashMap::new();
+        let mut map = BTreeMap::new();
         for (canton, scale) in scales {
             if canton == "VS" {
                 continue;

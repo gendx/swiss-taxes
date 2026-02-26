@@ -1,18 +1,49 @@
 use serde::Deserialize;
-use std::collections::HashMap;
+use std::borrow::Borrow;
 
 #[derive(Deserialize)]
-pub struct Database(pub HashMap<u32, Year>);
+pub struct SortedMap<K, V>(Vec<(K, V)>);
 
-impl Database {
-    pub fn load() -> Result<Self, String> {
-        const DATA: &[u8] = include_bytes!("../data/tables.db");
-        postcard::from_bytes(DATA).map_err(|e| format!("Failed to parse table: {e:?}"))
+impl<K, V> SortedMap<K, V> {
+    pub fn get<Q>(&self, key: &Q) -> Option<&V>
+    where
+        Q: Ord + ?Sized,
+        K: Borrow<Q>,
+    {
+        self.0
+            .binary_search_by(|(k, _)| k.borrow().cmp(key))
+            .ok()
+            .map(|i| &self.0[i].1)
     }
 }
 
 #[derive(Deserialize)]
-pub struct Year(pub HashMap<String, CantonalBase>);
+pub struct Database(pub SortedMap<u32, Year>);
+
+impl Database {
+    pub fn load() -> Result<Self, String> {
+        const DATA: &[u8] = include_bytes!("../data/tables.db");
+        match postcard::from_bytes::<Self>(DATA) {
+            Ok(db) => {
+                if !db.0.0.is_sorted_by_key(|(year, _)| year) {
+                    return Err("Table isn't sorted by year".into());
+                }
+
+                for (year, table) in &db.0.0 {
+                    if !table.0.0.is_sorted_by_key(|(canton, _)| canton) {
+                        return Err(format!("Table isn't sorted by canton for year {year}"));
+                    }
+                }
+
+                Ok(db)
+            }
+            Err(e) => Err(format!("Failed to parse table: {e:?}")),
+        }
+    }
+}
+
+#[derive(Deserialize)]
+pub struct Year(pub SortedMap<String, CantonalBase>);
 
 #[derive(Deserialize)]
 pub struct CantonalBase {
