@@ -1,7 +1,9 @@
 use crate::schema::{Group, Rates, Scales, Target, TaxType};
 use crate::table::{EvalPolicy, Table};
 use anyhow::{Result, anyhow};
+use blazinterner::{Arena, Interned};
 use log::{debug, trace};
+use ordered_float::OrderedFloat;
 use serde::Serialize;
 use std::collections::hash_map::Entry;
 use std::collections::{BTreeMap, HashMap};
@@ -9,14 +11,18 @@ use std::fs::File;
 use std::io::{BufReader, BufWriter};
 
 #[derive(Serialize)]
-pub struct Database(BTreeMap<u32, Year>);
+pub struct Database {
+    arena: Arena<CantonalScale>,
+    db: BTreeMap<u32, Year>,
+}
 
 impl Database {
     pub fn new(years: impl Iterator<Item = u32>) -> Result<Self> {
+        let mut arena = Arena::default();
         let db = years
-            .map(|year| -> Result<_> { Ok((year, Year::new(year)?)) })
+            .map(|year| -> Result<_> { Ok((year, Year::new(year, &mut arena)?)) })
             .try_collect()?;
-        Ok(Database(db))
+        Ok(Database { arena, db })
     }
 
     pub fn serialize(&self) -> Result<()> {
@@ -30,7 +36,7 @@ impl Database {
 pub struct Year(BTreeMap<String, CantonalBase>);
 
 impl Year {
-    fn new(year: u32) -> Result<Self> {
+    fn new(year: u32, arena: &mut Arena<CantonalScale>) -> Result<Self> {
         let rates = get_cantonal_rates(year)?;
         let scales = get_cantonal_scales(year)?;
 
@@ -40,7 +46,13 @@ impl Year {
                 continue;
             }
             let rate = rates[&canton];
-            map.insert(canton, CantonalBase { rate, scale });
+            map.insert(
+                canton,
+                CantonalBase {
+                    rate,
+                    scale: arena.intern(scale),
+                },
+            );
         }
         Ok(Year(map))
     }
@@ -49,7 +61,7 @@ impl Year {
 #[derive(Serialize)]
 struct CantonalBase {
     rate: f64,
-    scale: CantonalScale,
+    scale: Interned<CantonalScale>,
 }
 
 pub fn canton_policy(canton: &str) -> Result<EvalPolicy> {
@@ -110,9 +122,9 @@ pub fn get_cantonal_rates(year: u32) -> Result<HashMap<String, f64>> {
     Ok(cantonal_rates)
 }
 
-#[derive(Serialize)]
+#[derive(PartialEq, Eq, Hash, Serialize)]
 pub struct CantonalScale {
-    pub splitting: f64,
+    pub splitting: OrderedFloat<f64>,
     pub single: Table,
     pub married: Table,
 }
@@ -184,7 +196,7 @@ pub fn get_cantonal_scales(year: u32) -> Result<HashMap<String, CantonalScale>> 
             cantonal_scales.insert(
                 canton,
                 CantonalScale {
-                    splitting,
+                    splitting: OrderedFloat(splitting),
                     single: table_single,
                     married: table_married,
                 },

@@ -39,13 +39,14 @@ impl State {
         match &self.db {
             None => Err("Failed to load data".into()),
             Some(db) => {
-                let entry =
-                    db.0.get(&year)
-                        .ok_or_else(|| format!("Didn't find year: {year}"))?
-                        .0
-                        .get(canton)
-                        .ok_or_else(|| format!("Didn't find canton: {canton}"))?;
-                let scale = &entry.scale;
+                let entry = db
+                    .db
+                    .get(&year)
+                    .ok_or_else(|| format!("Didn't find year: {year}"))?
+                    .0
+                    .get(canton)
+                    .ok_or_else(|| format!("Didn't find canton: {canton}"))?;
+                let scale = &db.arena[entry.scale_index as usize];
                 plot_income_tax_diff(
                     canvas,
                     max_salary,

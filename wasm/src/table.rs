@@ -18,18 +18,21 @@ impl<K, V> SortedMap<K, V> {
 }
 
 #[derive(Deserialize)]
-pub struct Database(pub SortedMap<u32, Year>);
+pub struct Database {
+    pub arena: Vec<CantonalScale>,
+    pub db: SortedMap<u32, Year>,
+}
 
 impl Database {
     pub fn load() -> Result<Self, String> {
         const DATA: &[u8] = include_bytes!("../data/tables.db");
         match postcard::from_bytes::<Self>(DATA) {
             Ok(db) => {
-                if !db.0.0.is_sorted_by_key(|(year, _)| year) {
+                if !db.db.0.is_sorted_by_key(|(year, _)| year) {
                     return Err("Table isn't sorted by year".into());
                 }
 
-                for (year, table) in &db.0.0 {
+                for (year, table) in &db.db.0 {
                     if !table.0.0.is_sorted_by_key(|(canton, _)| canton) {
                         return Err(format!("Table isn't sorted by canton for year {year}"));
                     }
@@ -48,7 +51,7 @@ pub struct Year(pub SortedMap<String, CantonalBase>);
 #[derive(Deserialize)]
 pub struct CantonalBase {
     pub rate: f64,
-    pub scale: CantonalScale,
+    pub scale_index: u32,
 }
 
 #[derive(Deserialize)]
@@ -247,6 +250,7 @@ impl Formula {
         }
     }
 }
+
 #[derive(Deserialize)]
 struct TableFreiburg(Vec<TableFreiburgEntry>);
 

@@ -8,12 +8,13 @@ use nom::multi::many;
 use nom::number::complete::recognize_float;
 use nom::sequence::{delimited, preceded};
 use nom::{IResult, Parser};
+use ordered_float::OrderedFloat;
 use serde::Serialize;
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
 pub enum Formula {
     Input,
-    Const(f64),
+    Const(OrderedFloat<f64>),
     Log(Box<Formula>),
     Add(Box<Formula>, Box<Formula>),
     Sub(Box<Formula>, Box<Formula>),
@@ -41,10 +42,14 @@ impl Formula {
 }
 
 impl Formula {
+    fn constant(x: f64) -> Self {
+        Self::Const(OrderedFloat(x))
+    }
+
     pub fn eval(&self, x: f64) -> f64 {
         match self {
             Formula::Input => x,
-            Formula::Const(c) => *c,
+            Formula::Const(c) => **c,
             Formula::Log(f) => f.eval(x).ln(),
             Formula::Add(f, g) => f.eval(x) + g.eval(x),
             Formula::Sub(f, g) => f.eval(x) - g.eval(x),
@@ -59,7 +64,7 @@ impl TryFrom<&str> for Formula {
 
     fn try_from(text: &str) -> Result<Self, Self::Error> {
         if text.is_empty() {
-            Ok(Formula::Const(0.0))
+            Ok(Formula::constant(0.0))
         } else {
             match expr(text) {
                 Ok((remainder, formula)) => {
@@ -143,7 +148,7 @@ fn factor(i: &str) -> IResult<&str, Formula> {
         map(
             map_res(
                 delimited(multispace0, recognize_float, multispace0),
-                |s: &str| s.parse::<f64>(),
+                |s: &str| s.parse::<f64>().map(OrderedFloat),
             ),
             Formula::Const,
         ),
@@ -183,16 +188,16 @@ mod test {
             .unwrap(),
             Formula::add(
                 Formula::add(
-                    Formula::mul(Formula::Const(-0.827429), Formula::Input),
+                    Formula::mul(Formula::constant(-0.827429), Formula::Input),
                     Formula::mul(
-                        Formula::Const(0.089718),
+                        Formula::constant(0.089718),
                         Formula::mul(
                             Formula::Input,
-                            Formula::sub(Formula::log(Formula::Input), Formula::Const(1.0))
+                            Formula::sub(Formula::log(Formula::Input), Formula::constant(1.0))
                         )
                     )
                 ),
-                Formula::Const(829.41877)
+                Formula::constant(829.41877)
             )
         )
     }
@@ -207,8 +212,14 @@ mod test {
 
     #[test]
     fn parse_const() {
-        assert_eq!(Formula::try_from("100").unwrap(), Formula::Const(100.0));
-        assert_eq!(Formula::try_from("12.34").unwrap(), Formula::Const(12.34));
-        assert_eq!(Formula::try_from("-42.42").unwrap(), Formula::Const(-42.42));
+        assert_eq!(Formula::try_from("100").unwrap(), Formula::constant(100.0));
+        assert_eq!(
+            Formula::try_from("12.34").unwrap(),
+            Formula::constant(12.34)
+        );
+        assert_eq!(
+            Formula::try_from("-42.42").unwrap(),
+            Formula::constant(-42.42)
+        );
     }
 }

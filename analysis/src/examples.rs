@@ -163,9 +163,10 @@ pub fn check_tests(
 
             let income_simple_tax_canton = match relationship {
                 Relationship::Single => table.eval(request.taxable_income_canton.into()),
-                Relationship::Married => {
-                    table.eval_split(request.taxable_income_canton.into(), canton_scale.splitting)
-                }
+                Relationship::Married => table.eval_split(
+                    request.taxable_income_canton.into(),
+                    *canton_scale.splitting,
+                ),
             };
             let income_tax_canton = income_simple_tax_canton * canton_rate / 100.0;
             // TODO: not in VS

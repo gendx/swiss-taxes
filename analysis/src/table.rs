@@ -2,10 +2,11 @@ use crate::formula::Formula;
 use crate::schema::{Scale, ScaleEntry, TableType};
 use anyhow::anyhow;
 use log::{debug, warn};
+use ordered_float::OrderedFloat;
 use serde::Serialize;
 use std::convert::TryFrom;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
 pub struct Table {
     table: RawTable,
     policy: EvalPolicy,
@@ -47,7 +48,7 @@ impl Table {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
 pub enum EvalPolicy {
     Raw,
     Round100,
@@ -57,7 +58,7 @@ pub enum EvalPolicy {
     Valais,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
 enum RawTable {
     Bund(TableBund),
     Flattax(TableFlattax),
@@ -157,7 +158,7 @@ impl RawTable {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
 struct TableBund(Vec<TableBundEntry>);
 
 impl TryFrom<&[ScaleEntry]> for TableBund {
@@ -179,9 +180,9 @@ impl TryFrom<&[ScaleEntry]> for TableBund {
                             warn!("No entry found for 0 in table of type Bund");
                         }
                         Ok(TableBundEntry {
-                            bracket_start: entry.amount,
-                            base_tax: entry.taxes,
-                            marginal_rate: entry.percent,
+                            bracket_start: OrderedFloat(entry.amount),
+                            base_tax: OrderedFloat(entry.taxes),
+                            marginal_rate: OrderedFloat(entry.percent),
                         })
                     }
                 })
@@ -193,23 +194,23 @@ impl TryFrom<&[ScaleEntry]> for TableBund {
 impl TableBund {
     fn eval(&self, x: f64) -> f64 {
         for entry in self.0.iter().rev() {
-            if x >= entry.bracket_start {
-                return entry.base_tax + (x - entry.bracket_start) * entry.marginal_rate / 100.0;
+            if x >= *entry.bracket_start {
+                return *entry.base_tax + (x - *entry.bracket_start) * *entry.marginal_rate / 100.0;
             }
         }
         0.0
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
 struct TableBundEntry {
-    bracket_start: f64,
-    base_tax: f64,
-    marginal_rate: f64,
+    bracket_start: OrderedFloat<f64>,
+    base_tax: OrderedFloat<f64>,
+    marginal_rate: OrderedFloat<f64>,
 }
 
-#[derive(Debug, Clone, Copy, Serialize)]
-struct TableFlattax(f64);
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
+struct TableFlattax(OrderedFloat<f64>);
 
 impl TryFrom<&[ScaleEntry]> for TableFlattax {
     type Error = anyhow::Error;
@@ -232,18 +233,18 @@ impl TryFrom<&[ScaleEntry]> for TableFlattax {
             ))
         } else {
             let rate = table[0].percent;
-            Ok(TableFlattax(rate))
+            Ok(TableFlattax(OrderedFloat(rate)))
         }
     }
 }
 
 impl TableFlattax {
     fn eval(&self, x: f64) -> f64 {
-        x * self.0 / 100.0
+        x * *self.0 / 100.0
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
 struct TableFormel(Vec<TableFormelEntry>);
 
 impl TryFrom<&[ScaleEntry]> for TableFormel {
@@ -273,7 +274,7 @@ impl TryFrom<&[ScaleEntry]> for TableFormel {
                         let formula = Formula::try_from(entry.formula.as_str())?;
                         debug!("Parsed formula: {formula:?}");
                         Ok(TableFormelEntry {
-                            bracket_start: entry.amount,
+                            bracket_start: OrderedFloat(entry.amount),
                             formula,
                         })
                     }
@@ -286,7 +287,7 @@ impl TryFrom<&[ScaleEntry]> for TableFormel {
 impl TableFormel {
     fn eval(&self, x: f64) -> f64 {
         for entry in self.0.iter().rev() {
-            if x >= entry.bracket_start {
+            if x >= *entry.bracket_start {
                 return entry.formula.eval(x);
             }
         }
@@ -294,13 +295,13 @@ impl TableFormel {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
 struct TableFormelEntry {
-    bracket_start: f64,
+    bracket_start: OrderedFloat<f64>,
     formula: Formula,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
 struct TableFreiburg(Vec<TableFreiburgEntry>);
 
 impl TryFrom<&[ScaleEntry]> for TableFreiburg {
@@ -327,8 +328,8 @@ impl TryFrom<&[ScaleEntry]> for TableFreiburg {
                             warn!("No entry found for 0 in table of type Freiburg");
                         }
                         Ok(TableFreiburgEntry {
-                            bracket_start: entry.amount,
-                            tax_rate: entry.percent,
+                            bracket_start: OrderedFloat(entry.amount),
+                            tax_rate: OrderedFloat(entry.percent),
                         })
                     }
                 })
@@ -340,13 +341,13 @@ impl TryFrom<&[ScaleEntry]> for TableFreiburg {
 impl TableFreiburg {
     fn eval(&self, x: f64) -> f64 {
         for (i, entry) in self.0.iter().enumerate().rev() {
-            if x >= entry.bracket_start {
+            if x >= *entry.bracket_start {
                 let tax_rate = if i + 1 == self.0.len() {
-                    entry.tax_rate
+                    *entry.tax_rate
                 } else {
-                    let weight = (x - entry.bracket_start)
-                        / (self.0[i + 1].bracket_start - entry.bracket_start);
-                    entry.tax_rate + weight * (self.0[i + 1].tax_rate - entry.tax_rate)
+                    let weight = (x - *entry.bracket_start)
+                        / *(self.0[i + 1].bracket_start - entry.bracket_start);
+                    *entry.tax_rate + weight * *(self.0[i + 1].tax_rate - entry.tax_rate)
                 };
                 return x * tax_rate / 100.0;
             }
@@ -355,13 +356,13 @@ impl TableFreiburg {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
 struct TableFreiburgEntry {
-    bracket_start: f64,
-    tax_rate: f64,
+    bracket_start: OrderedFloat<f64>,
+    tax_rate: OrderedFloat<f64>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
 struct TableZuerich(Vec<TableZuerichEntry>);
 
 impl TryFrom<&[ScaleEntry]> for TableZuerich {
@@ -389,8 +390,8 @@ impl TryFrom<&[ScaleEntry]> for TableZuerich {
                             f64::INFINITY
                         };
                         Ok(TableZuerichEntry {
-                            bracket_len,
-                            marginal_rate: entry.percent,
+                            bracket_len: OrderedFloat(bracket_len),
+                            marginal_rate: OrderedFloat(entry.percent),
                         })
                     }
                 })
@@ -403,20 +404,20 @@ impl TableZuerich {
     fn eval(&self, mut x: f64) -> f64 {
         let mut tax = 0.0;
         for entry in &self.0 {
-            if x <= entry.bracket_len {
-                tax += x * entry.marginal_rate / 100.0;
+            if x <= *entry.bracket_len {
+                tax += x * *entry.marginal_rate / 100.0;
                 break;
             } else {
-                tax += entry.bracket_len * entry.marginal_rate / 100.0;
-                x -= entry.bracket_len;
+                tax += *entry.bracket_len * *entry.marginal_rate / 100.0;
+                x -= *entry.bracket_len;
             }
         }
         tax
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
 struct TableZuerichEntry {
-    bracket_len: f64,
-    marginal_rate: f64,
+    bracket_len: OrderedFloat<f64>,
+    marginal_rate: OrderedFloat<f64>,
 }

@@ -72,7 +72,7 @@ fn plot_year(year: u32) -> Result<()> {
                 &canton,
                 year,
                 cantonal_rate,
-                cantonal_scale.splitting,
+                *cantonal_scale.splitting,
                 &cantonal_scale.single,
                 &cantonal_scale.married,
             )
