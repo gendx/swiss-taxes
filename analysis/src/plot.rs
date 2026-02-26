@@ -59,11 +59,6 @@ fn plot_income_diff_png(
         .label_style(("sans-serif", 22))
         .draw()?;
     let plotting_area = legend.plotting_area().strip_coord_spec();
-    info!("legend.dim_in_pixel() = {:?}", plotting_area.dim_in_pixel());
-    info!(
-        "legend.get_pixel_range() = {:?}",
-        plotting_area.get_pixel_range()
-    );
 
     let (range_x, range_y) = plotting_area.get_pixel_range();
     let x_len = range_x.end - range_x.start;
