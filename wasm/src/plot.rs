@@ -21,38 +21,6 @@ pub fn plot_income_tax_diff(
     let (width, height) = root.dim_in_pixel();
     let (chart_area, legend_area) = root.split_horizontally(width - 100);
 
-    let vertical_margin = height / 5;
-    let mut legend = ChartBuilder::on(&legend_area)
-        .caption("Tax diff.", ("sans-serif", 26))
-        .margin_right(25)
-        .margin_top(vertical_margin)
-        .margin_bottom(vertical_margin)
-        .y_label_area_size(30)
-        .x_label_area_size(0)
-        .build_cartesian_2d(0..100, -5000..5000)
-        .map_err(|e| format!("Failed to create chart: {e:?}"))?;
-    legend
-        .configure_mesh()
-        .disable_mesh()
-        .disable_x_axis()
-        .label_style(("sans-serif", 22))
-        .draw()
-        .map_err(|e| format!("Failed to draw mesh: {e:?}"))?;
-    let plotting_area = legend.plotting_area().strip_coord_spec();
-
-    let (range_x, range_y) = plotting_area.get_pixel_range();
-    let x_len = range_x.end - range_x.start;
-    let y_len = range_y.end - range_y.start;
-
-    for j in 0..y_len {
-        let salary = 10000.0 * j as f64 / y_len as f64 - 5000.0;
-        for i in 0..x_len {
-            plotting_area
-                .draw_pixel((i, j), &colorize(salary))
-                .map_err(|e| format!("Failed to draw pixel: {e:?}"))?;
-        }
-    }
-
     let mut chart = ChartBuilder::on(&chart_area)
         .margin(50)
         .margin_left(80)
@@ -76,15 +44,57 @@ pub fn plot_income_tax_diff(
     let x_len = range_x.end - range_x.start;
     let y_len = range_y.end - range_y.start;
 
+    let mut min: f64 = -10.0;
+    let mut max: f64 = 10.0;
     for i in 0..x_len {
         let x = (max_salary as f64 * i as f64) / x_len as f64;
         for j in 0..y_len {
             let y = (max_salary as f64 * j as f64) / y_len as f64;
+
+            let diff = get_diff(x, y, cantonal_rate, splitting, table_single, table_married);
+            if diff.is_nan() {
+                console::error_1(&JsValue::from_str(&format!(
+                    "NaN in get_color({x}, {y}, {cantonal_rate}, {splitting}): diff={diff}"
+                )));
+            } else {
+                min = min.min(diff);
+                max = max.max(diff);
+            }
+
             plotting_area
-                .draw_pixel(
-                    (i, y_len - j - 1),
-                    &get_color(x, y, cantonal_rate, splitting, table_single, table_married),
-                )
+                .draw_pixel((i, y_len - j - 1), &colorize(diff))
+                .map_err(|e| format!("Failed to draw pixel: {e:?}"))?;
+        }
+    }
+
+    let vertical_margin = height / 5;
+    let mut legend = ChartBuilder::on(&legend_area)
+        .caption("Tax diff.", ("sans-serif", 26))
+        .margin_right(25)
+        .margin_top(vertical_margin)
+        .margin_bottom(vertical_margin)
+        .y_label_area_size(30)
+        .x_label_area_size(0)
+        .build_cartesian_2d(0..100, min.round() as i32..max.round() as i32)
+        .map_err(|e| format!("Failed to create chart: {e:?}"))?;
+    legend
+        .configure_mesh()
+        .disable_mesh()
+        .disable_x_axis()
+        .label_style(("sans-serif", 22))
+        .draw()
+        .map_err(|e| format!("Failed to draw mesh: {e:?}"))?;
+    let plotting_area = legend.plotting_area().strip_coord_spec();
+
+    let (range_x, range_y) = plotting_area.get_pixel_range();
+    let x_len = range_x.end - range_x.start;
+    let y_len = range_y.end - range_y.start;
+
+    for j in 0..y_len {
+        let salary = (max - min) * j as f64 / y_len as f64 + min;
+        for i in 0..x_len {
+            plotting_area
+                .draw_pixel((i, y_len - j - 1), &colorize(salary))
                 .map_err(|e| format!("Failed to draw pixel: {e:?}"))?;
         }
     }
@@ -105,23 +115,6 @@ fn get_diff(
     let tax_married = table_married.eval_split(x + y, splitting);
     let tax_singles = table_single.eval(x) + table_single.eval(y);
     (tax_singles - tax_married) * cantonal_rate / 100.0
-}
-
-fn get_color(
-    x: f64,
-    y: f64,
-    cantonal_rate: f64,
-    splitting: f64,
-    table_single: &Table,
-    table_married: &Table,
-) -> RGBColor {
-    let diff = get_diff(x, y, cantonal_rate, splitting, table_single, table_married);
-    if diff.is_nan() {
-        console::error_1(&JsValue::from_str(&format!(
-            "NaN in get_color({x}, {y}, {cantonal_rate}, {splitting}): diff={diff}"
-        )));
-    }
-    colorize(diff)
 }
 
 fn colorize(diff: f64) -> RGBColor {
