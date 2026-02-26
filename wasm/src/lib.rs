@@ -46,14 +46,16 @@ impl State {
                     .0
                     .get(canton)
                     .ok_or_else(|| format!("Didn't find canton: {canton}"))?;
-                let scale = &db.arena[entry.scale_index as usize];
+                let scale = &db.arena_scale[entry.scale_index as usize];
+                let single = &db.arena_table[scale.single_index as usize];
+                let married = &db.arena_table[scale.married_index as usize];
                 plot_income_tax_diff(
                     canvas,
                     max_salary,
                     entry.rate,
                     scale.splitting,
-                    &scale.single,
-                    &scale.married,
+                    single,
+                    married,
                 )?;
                 Ok(())
             }

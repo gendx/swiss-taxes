@@ -19,7 +19,8 @@ impl<K, V> SortedMap<K, V> {
 
 #[derive(Deserialize)]
 pub struct Database {
-    pub arena: Vec<CantonalScale>,
+    pub arena_scale: Vec<CantonalScale>,
+    pub arena_table: Vec<Table>,
     pub db: SortedMap<u32, Year>,
 }
 
@@ -57,8 +58,8 @@ pub struct CantonalBase {
 #[derive(Deserialize)]
 pub struct CantonalScale {
     pub splitting: f64,
-    pub single: Table,
-    pub married: Table,
+    pub single_index: u32,
+    pub married_index: u32,
 }
 
 #[derive(Deserialize)]

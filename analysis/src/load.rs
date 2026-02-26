@@ -12,17 +12,25 @@ use std::io::{BufReader, BufWriter};
 
 #[derive(Serialize)]
 pub struct Database {
-    arena: Arena<CantonalScale>,
+    arena_scale: Arena<InternedCantonalScale>,
+    arena_table: Arena<Table>,
     db: BTreeMap<u32, Year>,
 }
 
 impl Database {
     pub fn new(years: impl Iterator<Item = u32>) -> Result<Self> {
-        let mut arena = Arena::default();
+        let mut arena_scale = Arena::default();
+        let mut arena_table = Arena::default();
         let db = years
-            .map(|year| -> Result<_> { Ok((year, Year::new(year, &mut arena)?)) })
+            .map(|year| -> Result<_> {
+                Ok((year, Year::new(year, &mut arena_scale, &mut arena_table)?))
+            })
             .try_collect()?;
-        Ok(Database { arena, db })
+        Ok(Database {
+            arena_scale,
+            arena_table,
+            db,
+        })
     }
 
     pub fn serialize(&self) -> Result<()> {
@@ -36,7 +44,11 @@ impl Database {
 pub struct Year(BTreeMap<String, CantonalBase>);
 
 impl Year {
-    fn new(year: u32, arena: &mut Arena<CantonalScale>) -> Result<Self> {
+    fn new(
+        year: u32,
+        arena_scale: &mut Arena<InternedCantonalScale>,
+        arena_table: &mut Arena<Table>,
+    ) -> Result<Self> {
         let rates = get_cantonal_rates(year)?;
         let scales = get_cantonal_scales(year)?;
 
@@ -50,7 +62,7 @@ impl Year {
                 canton,
                 CantonalBase {
                     rate,
-                    scale: arena.intern(scale),
+                    scale: arena_scale.intern(InternedCantonalScale::new(scale, arena_table)),
                 },
             );
         }
@@ -61,7 +73,7 @@ impl Year {
 #[derive(Serialize)]
 struct CantonalBase {
     rate: f64,
-    scale: Interned<CantonalScale>,
+    scale: Interned<InternedCantonalScale>,
 }
 
 pub fn canton_policy(canton: &str) -> Result<EvalPolicy> {
@@ -120,6 +132,23 @@ pub fn get_cantonal_rates(year: u32) -> Result<HashMap<String, f64>> {
     cantonal_rates.insert("CH".into(), 100.0);
 
     Ok(cantonal_rates)
+}
+
+#[derive(PartialEq, Eq, Hash, Serialize)]
+pub struct InternedCantonalScale {
+    pub splitting: OrderedFloat<f64>,
+    pub single: Interned<Table>,
+    pub married: Interned<Table>,
+}
+
+impl InternedCantonalScale {
+    fn new(scale: CantonalScale, arena: &mut Arena<Table>) -> Self {
+        Self {
+            splitting: scale.splitting,
+            single: arena.intern(scale.single),
+            married: arena.intern(scale.married),
+        }
+    }
 }
 
 #[derive(PartialEq, Eq, Hash, Serialize)]
