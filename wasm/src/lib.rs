@@ -35,6 +35,7 @@ impl State {
         year: u32,
         canton: &str,
         max_salary: i32,
+        percent: bool,
     ) -> Result<(), JsValue> {
         match &self.db {
             None => Err("Failed to load data".into()),
@@ -56,6 +57,7 @@ impl State {
                     scale.splitting,
                     single,
                     married,
+                    percent,
                 )?;
                 Ok(())
             }

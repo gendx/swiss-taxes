@@ -13,7 +13,20 @@ pub fn plot_income_tax(
     table_married: &Table,
 ) -> Result<()> {
     if canton != "VS" {
+        info!("Creating plot for {canton} in {year} (rate={cantonal_rate}, split={splitting})");
+        debug!("Single table: {table_single:?}");
+        debug!("Married table: {table_married:?}");
+        fs::create_dir_all("plots")?;
+
         plot_income_diff_png(
+            canton,
+            year,
+            cantonal_rate,
+            splitting,
+            table_single,
+            table_married,
+        )?;
+        plot_income_percent_diff_png(
             canton,
             year,
             cantonal_rate,
@@ -33,11 +46,6 @@ fn plot_income_diff_png(
     table_single: &Table,
     table_married: &Table,
 ) -> Result<()> {
-    info!("Creating plot for {canton} in {year} (rate={cantonal_rate}, split={splitting})");
-    debug!("Single table: {table_single:?}");
-    debug!("Married table: {table_married:?}");
-    fs::create_dir_all("plots")?;
-
     let path = format!("plots/income-diff-{canton}-{year}.png");
     let root = BitMapBackend::new(&path, (1000, 900)).into_drawing_area();
     root.fill(&WHITE)?;
@@ -119,6 +127,103 @@ fn plot_income_diff_png(
     Ok(())
 }
 
+fn plot_income_percent_diff_png(
+    canton: &str,
+    year: u32,
+    cantonal_rate: f64,
+    splitting: f64,
+    table_single: &Table,
+    table_married: &Table,
+) -> Result<()> {
+    let path = format!("plots/income-percent-diff-{canton}-{year}.png");
+    let root = BitMapBackend::new(&path, (1000, 900)).into_drawing_area();
+    root.fill(&WHITE)?;
+
+    let (chart_area, legend_area) = root.split_horizontally(900);
+
+    let max_salary = 500_000;
+    let mut chart = ChartBuilder::on(&chart_area)
+        .margin(50)
+        .x_label_area_size(60)
+        .y_label_area_size(60)
+        .build_cartesian_2d(0..max_salary, 0..max_salary)?;
+
+    chart
+        .configure_mesh()
+        .disable_mesh()
+        .label_style(("sans-serif", 22))
+        .x_labels(6)
+        .y_labels(6)
+        .x_desc("Taxable income (person 1)")
+        .y_desc("Person 2")
+        .axis_desc_style(("sans-serif", 26))
+        .draw()?;
+
+    let plotting_area = chart.plotting_area().strip_coord_spec();
+
+    let (range_x, range_y) = plotting_area.get_pixel_range();
+    let x_len = range_x.end - range_x.start;
+    let y_len = range_y.end - range_y.start;
+
+    let mut min: f64 = -0.1;
+    let mut max: f64 = 0.1;
+    for i in 0..x_len {
+        let x = (max_salary as f64 * i as f64) / x_len as f64;
+        for j in 0..y_len {
+            let y = (max_salary as f64 * j as f64) / y_len as f64;
+
+            let denom = x + y;
+            let diff = if denom == 0.0 {
+                0.0
+            } else {
+                100.0 * get_diff(x, y, cantonal_rate, splitting, table_single, table_married)
+                    / denom
+            };
+            if diff.is_nan() {
+                panic!("NaN in get_color({x}, {y}, {cantonal_rate}, {splitting}): diff={diff}");
+            } else {
+                min = min.min(diff);
+                max = max.max(diff);
+            }
+
+            plotting_area.draw_pixel((i, y_len - j - 1), &colorize_percent(diff))?;
+        }
+    }
+
+    let precision = if max - min >= 0.8 { 1 } else { 2 };
+    let mut legend = ChartBuilder::on(&legend_area)
+        .caption("Tax diff.", ("sans-serif", 26))
+        .margin_right(25)
+        .margin_top(200)
+        .margin_bottom(200)
+        .y_label_area_size(25)
+        .x_label_area_size(25)
+        .build_cartesian_2d(0..100, min..max)?;
+    legend
+        .configure_mesh()
+        .disable_mesh()
+        .disable_x_axis()
+        .y_label_formatter(&|percent| format!("{percent:.*}%", precision))
+        .label_style(("sans-serif", 22))
+        .draw()?;
+    let plotting_area = legend.plotting_area().strip_coord_spec();
+
+    let (range_x, range_y) = plotting_area.get_pixel_range();
+    let x_len = range_x.end - range_x.start;
+    let y_len = range_y.end - range_y.start;
+
+    for j in 0..y_len {
+        let percent = (max - min) * j as f64 / y_len as f64 + min;
+        for i in 0..x_len {
+            plotting_area.draw_pixel((i, y_len - j - 1), &colorize_percent(percent))?;
+        }
+    }
+
+    root.present()?;
+
+    Ok(())
+}
+
 fn get_diff(
     x: f64,
     y: f64,
@@ -160,6 +265,39 @@ fn colorize(diff: f64) -> RGBColor {
         interpolate(p6000, p9000, 6000.0, 9000.0, diff)
     } else if diff > 0.0 {
         interpolate(p9000, p12000, 9000.0, 12000.0, diff)
+    } else {
+        panic!("NaN in colorize(diff={diff})");
+    }
+}
+
+fn colorize_percent(diff: f64) -> RGBColor {
+    let c0 = RGBColor(0xc0, 0xc0, 0xc0);
+    let m025 = RGBColor(0xc0, 0xa0, 0xa0);
+    let m1 = RGBColor(0xe0, 0xa0, 0x00);
+    let m3 = RGBColor(0xc0, 0x40, 0x40);
+    let m5 = RGBColor(0xa0, 0x60, 0x80);
+    let p025 = RGBColor(0x80, 0xa0, 0xc0);
+    let p1 = RGBColor(0x20, 0xa0, 0xa0);
+    let p3 = RGBColor(0x50, 0xa0, 0x60);
+    let p5 = RGBColor(0x40, 0xc0, 0x00);
+    let p8 = RGBColor(0x80, 0xc0, 0x00);
+
+    if (-0.025..=0.025).contains(&diff) {
+        c0
+    } else if (-1.0..=-0.025).contains(&diff) {
+        interpolate(m025, m1, -0.025, -1.0, diff)
+    } else if (-3.0..=-1.0).contains(&diff) {
+        interpolate(m1, m3, -1.0, -3.0, diff)
+    } else if diff < 0.0 {
+        interpolate(m3, m5, -3.0, -5.0, diff)
+    } else if (0.025..=1.0).contains(&diff) {
+        interpolate(p025, p1, 0.025, 1.0, diff)
+    } else if (1.0..=3.0).contains(&diff) {
+        interpolate(p1, p3, 1.0, 3.0, diff)
+    } else if (3.0..=5.0).contains(&diff) {
+        interpolate(p3, p5, 3.0, 5.0, diff)
+    } else if diff > 0.0 {
+        interpolate(p5, p8, 5.0, 8.0, diff)
     } else {
         panic!("NaN in colorize(diff={diff})");
     }

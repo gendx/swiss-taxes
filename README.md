@@ -48,7 +48,8 @@ async function run() {
     var year = 2025;
     var zone = "CH";
     var max_salary = 100000;
-    state.plot(canvas, year, zone, max_salary);
+    var percent = false;
+    state.plot(canvas, year, zone, max_salary, percent);
 }
 
 run();

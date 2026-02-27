@@ -11,6 +11,7 @@ pub fn plot_income_tax_diff(
     splitting: f64,
     table_single: &Table,
     table_married: &Table,
+    percent: bool,
 ) -> Result<(), JsValue> {
     let backend = CanvasBackend::with_canvas_object(canvas).ok_or("Failed to create backend")?;
 
@@ -44,60 +45,125 @@ pub fn plot_income_tax_diff(
     let x_len = range_x.end - range_x.start;
     let y_len = range_y.end - range_y.start;
 
-    let mut min: f64 = -10.0;
-    let mut max: f64 = 10.0;
-    for i in 0..x_len {
-        let x = (max_salary as f64 * i as f64) / x_len as f64;
-        for j in 0..y_len {
-            let y = (max_salary as f64 * j as f64) / y_len as f64;
+    let (min, max) = if percent {
+        let mut min: f64 = -0.1;
+        let mut max: f64 = 0.1;
+        for i in 0..x_len {
+            let x = (max_salary as f64 * i as f64) / x_len as f64;
+            for j in 0..y_len {
+                let y = (max_salary as f64 * j as f64) / y_len as f64;
 
-            let diff = get_diff(x, y, cantonal_rate, splitting, table_single, table_married);
-            if diff.is_nan() {
-                console::error_1(&JsValue::from_str(&format!(
-                    "NaN in get_color({x}, {y}, {cantonal_rate}, {splitting}): diff={diff}"
-                )));
-            } else {
-                min = min.min(diff);
-                max = max.max(diff);
+                let denom = x + y;
+                let diff = if denom == 0.0 {
+                    0.0
+                } else {
+                    100.0 * get_diff(x, y, cantonal_rate, splitting, table_single, table_married)
+                        / denom
+                };
+                if diff.is_nan() {
+                    console::error_1(&JsValue::from_str(&format!(
+                        "NaN in get_diff({x}, {y}, {cantonal_rate}, {splitting}): diff={diff}"
+                    )));
+                } else {
+                    min = min.min(diff);
+                    max = max.max(diff);
+                }
+
+                plotting_area
+                    .draw_pixel((i, y_len - j - 1), &colorize_percent(diff))
+                    .map_err(|e| format!("Failed to draw pixel: {e:?}"))?;
             }
-
-            plotting_area
-                .draw_pixel((i, y_len - j - 1), &colorize(diff))
-                .map_err(|e| format!("Failed to draw pixel: {e:?}"))?;
         }
-    }
+        (min, max)
+    } else {
+        let mut min: f64 = -10.0;
+        let mut max: f64 = 10.0;
+        for i in 0..x_len {
+            let x = (max_salary as f64 * i as f64) / x_len as f64;
+            for j in 0..y_len {
+                let y = (max_salary as f64 * j as f64) / y_len as f64;
+
+                let diff = get_diff(x, y, cantonal_rate, splitting, table_single, table_married);
+                if diff.is_nan() {
+                    console::error_1(&JsValue::from_str(&format!(
+                        "NaN in get_diff({x}, {y}, {cantonal_rate}, {splitting}): diff={diff}"
+                    )));
+                } else {
+                    min = min.min(diff);
+                    max = max.max(diff);
+                }
+
+                plotting_area
+                    .draw_pixel((i, y_len - j - 1), &colorize(diff))
+                    .map_err(|e| format!("Failed to draw pixel: {e:?}"))?;
+            }
+        }
+        (min, max)
+    };
 
     let vertical_margin = height / 5;
-    let mut legend = ChartBuilder::on(&legend_area)
+    let mut builder = ChartBuilder::on(&legend_area);
+    builder
         .caption("Tax diff.", ("sans-serif", 26))
         .margin_right(25)
         .margin_top(vertical_margin)
         .margin_bottom(vertical_margin)
         .y_label_area_size(30)
-        .x_label_area_size(0)
-        .build_cartesian_2d(0..100, min.round() as i32..max.round() as i32)
-        .map_err(|e| format!("Failed to create chart: {e:?}"))?;
-    legend
-        .configure_mesh()
-        .disable_mesh()
-        .disable_x_axis()
-        .label_style(("sans-serif", 22))
-        .draw()
-        .map_err(|e| format!("Failed to draw mesh: {e:?}"))?;
-    let plotting_area = legend.plotting_area().strip_coord_spec();
+        .x_label_area_size(0);
 
-    let (range_x, range_y) = plotting_area.get_pixel_range();
-    let x_len = range_x.end - range_x.start;
-    let y_len = range_y.end - range_y.start;
+    if percent {
+        let precision = if max - min >= 0.8 { 1 } else { 2 };
+        let mut legend = builder
+            .build_cartesian_2d(0..100, min..max)
+            .map_err(|e| format!("Failed to create chart: {e:?}"))?;
+        legend
+            .configure_mesh()
+            .disable_mesh()
+            .disable_x_axis()
+            .y_label_formatter(&|percent| format!("{percent:.*}%", precision))
+            .label_style(("sans-serif", 22))
+            .draw()
+            .map_err(|e| format!("Failed to draw mesh: {e:?}"))?;
+        let plotting_area = legend.plotting_area().strip_coord_spec();
 
-    for j in 0..y_len {
-        let salary = (max - min) * j as f64 / y_len as f64 + min;
-        for i in 0..x_len {
-            plotting_area
-                .draw_pixel((i, y_len - j - 1), &colorize(salary))
-                .map_err(|e| format!("Failed to draw pixel: {e:?}"))?;
+        let (range_x, range_y) = plotting_area.get_pixel_range();
+        let x_len = range_x.end - range_x.start;
+        let y_len = range_y.end - range_y.start;
+
+        for j in 0..y_len {
+            let percent = (max - min) * j as f64 / y_len as f64 + min;
+            for i in 0..x_len {
+                plotting_area
+                    .draw_pixel((i, y_len - j - 1), &colorize_percent(percent))
+                    .map_err(|e| format!("Failed to draw pixel: {e:?}"))?;
+            }
         }
-    }
+    } else {
+        let mut legend = builder
+            .build_cartesian_2d(0..100, min.round() as i32..max.round() as i32)
+            .map_err(|e| format!("Failed to create chart: {e:?}"))?;
+        legend
+            .configure_mesh()
+            .disable_mesh()
+            .disable_x_axis()
+            .label_style(("sans-serif", 22))
+            .draw()
+            .map_err(|e| format!("Failed to draw mesh: {e:?}"))?;
+        let plotting_area = legend.plotting_area().strip_coord_spec();
+
+        let (range_x, range_y) = plotting_area.get_pixel_range();
+        let x_len = range_x.end - range_x.start;
+        let y_len = range_y.end - range_y.start;
+
+        for j in 0..y_len {
+            let salary = (max - min) * j as f64 / y_len as f64 + min;
+            for i in 0..x_len {
+                plotting_area
+                    .draw_pixel((i, y_len - j - 1), &colorize(salary))
+                    .map_err(|e| format!("Failed to draw pixel: {e:?}"))?;
+            }
+        }
+    };
 
     root.present()
         .map_err(|e| format!("Failed to present chart: {e:?}"))?;
@@ -147,6 +213,42 @@ fn colorize(diff: f64) -> RGBColor {
         interpolate(p9000, p12000, 9000.0, 12000.0, diff)
     } else {
         console::error_1(&JsValue::from_str(&format!("NaN in colorize: diff={diff}")));
+        RGBColor(0, 0, 0)
+    }
+}
+
+fn colorize_percent(diff: f64) -> RGBColor {
+    let c0 = RGBColor(0xc0, 0xc0, 0xc0);
+    let m025 = RGBColor(0xc0, 0xa0, 0xa0);
+    let m1 = RGBColor(0xe0, 0xa0, 0x00);
+    let m3 = RGBColor(0xc0, 0x40, 0x40);
+    let m5 = RGBColor(0xa0, 0x60, 0x80);
+    let p025 = RGBColor(0x80, 0xa0, 0xc0);
+    let p1 = RGBColor(0x20, 0xa0, 0xa0);
+    let p3 = RGBColor(0x50, 0xa0, 0x60);
+    let p5 = RGBColor(0x40, 0xc0, 0x00);
+    let p8 = RGBColor(0x80, 0xc0, 0x00);
+
+    if (-0.025..=0.025).contains(&diff) {
+        c0
+    } else if (-1.0..=-0.025).contains(&diff) {
+        interpolate(m025, m1, -0.025, -1.0, diff)
+    } else if (-3.0..=-1.0).contains(&diff) {
+        interpolate(m1, m3, -1.0, -3.0, diff)
+    } else if diff < 0.0 {
+        interpolate(m3, m5, -3.0, -5.0, diff)
+    } else if (0.025..=1.0).contains(&diff) {
+        interpolate(p025, p1, 0.025, 1.0, diff)
+    } else if (1.0..=3.0).contains(&diff) {
+        interpolate(p1, p3, 1.0, 3.0, diff)
+    } else if (3.0..=5.0).contains(&diff) {
+        interpolate(p3, p5, 3.0, 5.0, diff)
+    } else if diff > 0.0 {
+        interpolate(p5, p8, 5.0, 8.0, diff)
+    } else {
+        console::error_1(&JsValue::from_str(&format!(
+            "NaN in colorize_percent: diff={diff}"
+        )));
         RGBColor(0, 0, 0)
     }
 }
