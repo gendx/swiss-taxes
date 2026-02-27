@@ -118,64 +118,33 @@ fn get_diff(
 }
 
 fn colorize(diff: f64) -> RGBColor {
+    let c0 = RGBColor(0xc0, 0xc0, 0xc0);
+    let m10 = RGBColor(0xc0, 0xa0, 0xa0);
+    let m3000 = RGBColor(0xe0, 0xa0, 0x00);
+    let m8000 = RGBColor(0xc0, 0x40, 0x40);
+    let m12000 = RGBColor(0xa0, 0x60, 0x80);
+    let p10 = RGBColor(0x80, 0xa0, 0xc0);
+    let p3000 = RGBColor(0x20, 0xa0, 0xa0);
+    let p6000 = RGBColor(0x50, 0xa0, 0x60);
+    let p9000 = RGBColor(0x40, 0xc0, 0x00);
+    let p12000 = RGBColor(0x80, 0xc0, 0x00);
+
     if (-10.0..=10.0).contains(&diff) {
-        RGBColor(0xc0, 0xc0, 0xc0)
+        c0
     } else if (-3000.0..=-10.0).contains(&diff) {
-        interpolate(
-            RGBColor(0xc0, 0xa0, 0xa0),
-            RGBColor(0xe0, 0xa0, 0x00),
-            -10.0,
-            -3000.0,
-            diff,
-        )
+        interpolate(m10, m3000, -10.0, -3000.0, diff)
     } else if (-8000.0..=-3000.0).contains(&diff) {
-        interpolate(
-            RGBColor(0xe0, 0xa0, 0x00),
-            RGBColor(0xc0, 0x40, 0x40),
-            -3000.0,
-            -8000.0,
-            diff,
-        )
+        interpolate(m3000, m8000, -3000.0, -8000.0, diff)
     } else if diff < 0.0 {
-        interpolate(
-            RGBColor(0xc0, 0x40, 0x40),
-            RGBColor(0xa0, 0x60, 0x80),
-            -8000.0,
-            -12000.0,
-            diff,
-        )
+        interpolate(m8000, m12000, -8000.0, -12000.0, diff)
     } else if (10.0..=3000.0).contains(&diff) {
-        interpolate(
-            RGBColor(0x80, 0xa0, 0xc0),
-            RGBColor(0x20, 0xa0, 0xa0),
-            10.0,
-            3000.0,
-            diff,
-        )
+        interpolate(p10, p3000, 10.0, 3000.0, diff)
     } else if (3000.0..=6000.0).contains(&diff) {
-        interpolate(
-            RGBColor(0x20, 0xa0, 0xa0),
-            RGBColor(0x80, 0xc0, 0x00),
-            3000.0,
-            6000.0,
-            diff,
-        )
+        interpolate(p3000, p6000, 3000.0, 6000.0, diff)
     } else if (6000.0..=9000.0).contains(&diff) {
-        interpolate(
-            RGBColor(0x80, 0xc0, 0x00),
-            RGBColor(0x40, 0xc0, 0x00),
-            6000.0,
-            9000.0,
-            diff,
-        )
+        interpolate(p6000, p9000, 6000.0, 9000.0, diff)
     } else if diff > 0.0 {
-        interpolate(
-            RGBColor(0x40, 0xc0, 0x00),
-            RGBColor(0x50, 0xa0, 0x60),
-            9000.0,
-            12000.0,
-            diff,
-        )
+        interpolate(p9000, p12000, 9000.0, 12000.0, diff)
     } else {
         console::error_1(&JsValue::from_str(&format!("NaN in colorize: diff={diff}")));
         RGBColor(0, 0, 0)
