@@ -5,6 +5,7 @@ use crate::load::CantonalScale;
 use anyhow::Result;
 use decorate::make_line_styles;
 use log::{debug, info};
+use plotters::element::DashedPathElement;
 use plotters::prelude::*;
 use std::collections::HashMap;
 use std::fs;
@@ -25,6 +26,14 @@ pub fn plot_income_tax(
         fs::create_dir_all("plots")?;
 
         plot_income_rates(
+            canton,
+            year,
+            cantonal_rate,
+            splitting,
+            table_single,
+            table_married,
+        )?;
+        plot_income_rates_compare(
             canton,
             year,
             cantonal_rate,
@@ -325,6 +334,138 @@ fn plot_income_rates(
         .background_style(WHITE.filled())
         .label_font(("sans-serif", 20))
         .draw()?;
+
+    root.present()?;
+
+    Ok(())
+}
+
+fn plot_income_rates_compare(
+    canton: &str,
+    year: u32,
+    cantonal_rate: f64,
+    splitting: f64,
+    table_single: &Table,
+    table_married: &Table,
+) -> Result<()> {
+    let path = format!("plots/income-rates-compare-{canton}-{year}.svg");
+    let root = SVGBackend::new(&path, (800, 700)).into_drawing_area();
+
+    let line_styles = make_line_styles();
+
+    let max_salary = 500_000;
+    let mut chart = ChartBuilder::on(&root)
+        .x_label_area_size(50)
+        .y_label_area_size(60)
+        .margin(10)
+        .margin_right(40)
+        .caption(
+            format!("Income tax for {canton} in {year}"),
+            ("sans-serif", 26),
+        )
+        .build_cartesian_2d(0.0..max_salary as f64, 0.0..25.0)?;
+
+    chart
+        .configure_mesh()
+        .label_style(("sans-serif", 20))
+        .x_desc("Taxable income")
+        .y_desc("Income tax rate")
+        .x_labels(10)
+        .x_label_formatter(&|salary| format!("{salary:.0}"))
+        .y_label_formatter(&|percent| format!("{percent:.0}%"))
+        .draw()?;
+
+    let style = &line_styles[0];
+    chart
+        .draw_series(LineSeries::new(
+            (1..=500).map(|x| {
+                let salary = (x * max_salary) as f64 / 500.0;
+                (salary, table_single.eval(salary) * cantonal_rate / salary)
+            }),
+            style.color,
+        ))?
+        .label("single")
+        .legend(|(x, y)| {
+            EmptyElement::at((x, y))
+                + PathElement::new(vec![(0, 0), (20, 0)], style.color)
+                + style.decorator.decorate((10, 0), style.color)
+        });
+    chart.draw_series(
+        (1..=500)
+            .skip(12)
+            .step_by(50)
+            .map(|x| {
+                let salary = (x * max_salary) as f64 / 500.0;
+                (salary, table_single.eval(salary) * cantonal_rate / salary)
+            })
+            .map(|(x, y)| style.decorator.decorate((x, y), style.color)),
+    )?;
+
+    let style = &line_styles[1];
+    chart
+        .draw_series(LineSeries::new(
+            (1..=500).map(|x| {
+                let salary = (x * max_salary) as f64 / 500.0;
+                (
+                    salary,
+                    table_married.eval_split(salary, splitting) * cantonal_rate / salary,
+                )
+            }),
+            style.color,
+        ))?
+        .label("married")
+        .legend(|(x, y)| {
+            EmptyElement::at((x, y))
+                + PathElement::new(vec![(0, 0), (20, 0)], style.color)
+                + style.decorator.decorate((10, 0), style.color)
+        });
+    chart.draw_series(
+        (1..=500)
+            .skip(37)
+            .step_by(50)
+            .map(|x| {
+                let salary = (x * max_salary) as f64 / 500.0;
+                (
+                    salary,
+                    table_married.eval_split(salary, splitting) * cantonal_rate / salary,
+                )
+            })
+            .map(|(x, y)| style.decorator.decorate((x, y), style.color)),
+    )?;
+
+    chart
+        .configure_series_labels()
+        .position(SeriesLabelPosition::LowerRight)
+        .border_style(BLACK)
+        .background_style(WHITE.filled())
+        .label_font(("sans-serif", 20))
+        .draw()?;
+
+    let point_single = (
+        100_000.0,
+        table_single.eval(100_000.0) * cantonal_rate / 100_000.0,
+    );
+    let point_married = (
+        200_000.0,
+        table_married.eval_split(200_000.0, splitting) * cantonal_rate / 200_000.0,
+    );
+
+    chart.plotting_area().draw(&DashedPathElement::new(
+        [(0.0, point_single.1), point_single, (point_single.0, 0.0)],
+        8,
+        5,
+        BLACK,
+    ))?;
+    chart.plotting_area().draw(&DashedPathElement::new(
+        [
+            (0.0, point_married.1),
+            point_married,
+            (point_married.0, 0.0),
+        ],
+        8,
+        5,
+        BLACK,
+    ))?;
 
     root.present()?;
 
