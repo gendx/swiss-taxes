@@ -14,7 +14,7 @@ use load::{
     Database, canton_policy, get_cantonal_rates, get_cantonal_scales, is_married, is_single,
 };
 use log::{debug, info, trace, warn};
-use plot::plot_income_tax;
+use plot::{plot_all_income_tax, plot_income_tax};
 use schema::{Deductions, OtherDeductions, Rates, Scales, TableType, Target, TaxType};
 use std::fs::File;
 use std::io::BufReader;
@@ -66,18 +66,22 @@ fn plot_year(year: u32) -> Result<()> {
     let cantonal_rates = get_cantonal_rates(year)?;
     let cantonal_scales = get_cantonal_scales(year)?;
 
-    for (canton, cantonal_rate) in cantonal_rates {
-        if let Some(cantonal_scale) = cantonal_scales.get(&canton)
+    for (canton, cantonal_rate) in &cantonal_rates {
+        if let Some(cantonal_scale) = cantonal_scales.get(canton)
             && let Err(e) = plot_income_tax(
-                &canton,
+                canton,
                 year,
-                cantonal_rate,
+                *cantonal_rate,
                 *cantonal_scale.splitting,
                 &cantonal_scale.single,
                 &cantonal_scale.married,
             )
         {
             warn!("Failed to plot {canton} in {year}: {e:?}");
+        }
+
+        if let Err(e) = plot_all_income_tax(year, &cantonal_rates, &cantonal_scales) {
+            warn!("Failed to plot {year}: {e:?}");
         }
     }
 

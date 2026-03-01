@@ -1,8 +1,14 @@
+mod decorate;
+
 use crate::Table;
+use crate::load::CantonalScale;
 use anyhow::Result;
+use decorate::make_line_styles;
 use log::{debug, info};
 use plotters::prelude::*;
+use std::collections::HashMap;
 use std::fs;
+use std::ops::Range;
 
 pub fn plot_income_tax(
     canton: &str,
@@ -18,6 +24,14 @@ pub fn plot_income_tax(
         debug!("Married table: {table_married:?}");
         fs::create_dir_all("plots")?;
 
+        plot_income_rates(
+            canton,
+            year,
+            cantonal_rate,
+            splitting,
+            table_single,
+            table_married,
+        )?;
         plot_income_diff_png(
             canton,
             year,
@@ -35,6 +49,285 @@ pub fn plot_income_tax(
             table_married,
         )?;
     }
+    Ok(())
+}
+
+pub fn plot_all_income_tax(
+    year: u32,
+    cantonal_rates: &HashMap<String, f64>,
+    cantonal_scales: &HashMap<String, CantonalScale>,
+) -> Result<()> {
+    plot_all_income_tax_selected(
+        year,
+        cantonal_rates,
+        cantonal_scales,
+        &["CH", "BL", "BS", "FR", "SZ", "UR", "VD"],
+    )?;
+    plot_all_income_tax_partial(year, cantonal_rates, cantonal_scales, 1, 0..8)?;
+    plot_all_income_tax_partial(year, cantonal_rates, cantonal_scales, 2, 8..16)?;
+    plot_all_income_tax_partial(year, cantonal_rates, cantonal_scales, 3, 16..25)?;
+    Ok(())
+}
+
+fn plot_all_income_tax_selected(
+    year: u32,
+    cantonal_rates: &HashMap<String, f64>,
+    cantonal_scales: &HashMap<String, CantonalScale>,
+    cantons: &[&str],
+) -> Result<()> {
+    let path = format!("plots/income-rates-selected-{year}.svg");
+    let root = SVGBackend::new(&path, (800, 700)).into_drawing_area();
+
+    let max_salary = 1_000_000;
+    let mut chart = ChartBuilder::on(&root)
+        .x_label_area_size(50)
+        .y_label_area_size(60)
+        .margin(10)
+        .margin_right(40)
+        .caption(format!("Single income tax in {year}"), ("sans-serif", 26))
+        .build_cartesian_2d(0.0..max_salary as f64, 0.0..25.0)?;
+
+    chart
+        .configure_mesh()
+        .label_style(("sans-serif", 20))
+        .x_desc("Taxable income")
+        .y_desc("Income tax rate")
+        .x_labels(10)
+        .x_label_formatter(&|salary| format!("{salary:.0}"))
+        .y_label_formatter(&|percent| format!("{percent:.0}%"))
+        .draw()?;
+
+    let line_styles = make_line_styles();
+    for (i, canton) in cantons.iter().enumerate() {
+        let style = line_styles[i % line_styles.len()];
+        let cantonal_rate = cantonal_rates[*canton];
+        let cantonal_scale = &cantonal_scales[*canton];
+        let table_single = &cantonal_scale.single;
+
+        chart
+            .draw_series(LineSeries::new(
+                (1..=500).map(|x| {
+                    let salary = (x * max_salary) as f64 / 500.0;
+                    (salary, table_single.eval(salary) * cantonal_rate / salary)
+                }),
+                style.color,
+            ))?
+            .label(*canton)
+            .legend(move |(x, y)| {
+                EmptyElement::at((x, y))
+                    + PathElement::new(vec![(0, 0), (20, 0)], style.color)
+                    + style.decorator.decorate((10, 0), style.color)
+            });
+        chart.draw_series(
+            (1..=500)
+                .skip(i * 50 / cantons.len())
+                .step_by(50)
+                .map(|x| {
+                    let salary = (x * max_salary) as f64 / 500.0;
+                    (salary, table_single.eval(salary) * cantonal_rate / salary)
+                })
+                .map(|(x, y)| style.decorator.decorate((x, y), style.color)),
+        )?;
+    }
+
+    chart
+        .configure_series_labels()
+        .position(SeriesLabelPosition::UpperLeft)
+        .border_style(BLACK)
+        .background_style(WHITE.filled())
+        .label_font(("sans-serif", 20))
+        .draw()?;
+
+    root.present()?;
+
+    Ok(())
+}
+
+fn plot_all_income_tax_partial(
+    year: u32,
+    cantonal_rates: &HashMap<String, f64>,
+    cantonal_scales: &HashMap<String, CantonalScale>,
+    index: usize,
+    range: Range<usize>,
+) -> Result<()> {
+    let path = format!("plots/income-rates-{year}-{index}.svg");
+    let root = SVGBackend::new(&path, (800, 700)).into_drawing_area();
+
+    let max_salary = 1_000_000;
+    let mut chart = ChartBuilder::on(&root)
+        .x_label_area_size(50)
+        .y_label_area_size(60)
+        .margin(10)
+        .margin_right(40)
+        .caption(format!("Single income tax in {year}"), ("sans-serif", 26))
+        .build_cartesian_2d(0.0..max_salary as f64, 0.0..25.0)?;
+
+    chart
+        .configure_mesh()
+        .label_style(("sans-serif", 20))
+        .x_desc("Taxable income")
+        .y_desc("Income tax rate")
+        .x_labels(10)
+        .x_label_formatter(&|salary| format!("{salary:.0}"))
+        .y_label_formatter(&|percent| format!("{percent:.0}%"))
+        .draw()?;
+
+    let mut cantons: Vec<&str> = cantonal_rates
+        .keys()
+        .map(|x| x.as_str())
+        .filter(|canton| *canton != "VS" && *canton != "CH")
+        .collect();
+    cantons.sort_unstable();
+
+    let line_styles = make_line_styles();
+    let range_len = range.end - range.start;
+    for (i, canton) in cantons[range].iter().enumerate() {
+        let style = line_styles[i % line_styles.len()];
+        let cantonal_rate = cantonal_rates[*canton];
+        let cantonal_scale = &cantonal_scales[*canton];
+        let table_single = &cantonal_scale.single;
+
+        chart
+            .draw_series(LineSeries::new(
+                (1..=500).map(|x| {
+                    let salary = (x * max_salary) as f64 / 500.0;
+                    (salary, table_single.eval(salary) * cantonal_rate / salary)
+                }),
+                style.color,
+            ))?
+            .label(*canton)
+            .legend(move |(x, y)| {
+                EmptyElement::at((x, y))
+                    + PathElement::new(vec![(0, 0), (20, 0)], style.color)
+                    + style.decorator.decorate((10, 0), style.color)
+            });
+        chart.draw_series(
+            (1..=500)
+                .skip(i * 50 / range_len)
+                .step_by(50)
+                .map(|x| {
+                    let salary = (x * max_salary) as f64 / 500.0;
+                    (salary, table_single.eval(salary) * cantonal_rate / salary)
+                })
+                .map(|(x, y)| style.decorator.decorate((x, y), style.color)),
+        )?;
+    }
+
+    chart
+        .configure_series_labels()
+        .position(SeriesLabelPosition::LowerRight)
+        .border_style(BLACK)
+        .background_style(WHITE.filled())
+        .label_font(("sans-serif", 20))
+        .draw()?;
+
+    root.present()?;
+
+    Ok(())
+}
+
+fn plot_income_rates(
+    canton: &str,
+    year: u32,
+    cantonal_rate: f64,
+    splitting: f64,
+    table_single: &Table,
+    table_married: &Table,
+) -> Result<()> {
+    let path = format!("plots/income-rates-{canton}-{year}.svg");
+    let root = SVGBackend::new(&path, (800, 700)).into_drawing_area();
+
+    let line_styles = make_line_styles();
+
+    let max_salary = 1_000_000;
+    let mut chart = ChartBuilder::on(&root)
+        .x_label_area_size(50)
+        .y_label_area_size(60)
+        .margin(10)
+        .margin_right(40)
+        .caption(
+            format!("Income tax for {canton} in {year}"),
+            ("sans-serif", 26),
+        )
+        .build_cartesian_2d(0.0..max_salary as f64, 0.0..25.0)?;
+
+    chart
+        .configure_mesh()
+        .label_style(("sans-serif", 20))
+        .x_desc("Taxable income")
+        .y_desc("Income tax rate")
+        .x_labels(10)
+        .x_label_formatter(&|salary| format!("{salary:.0}"))
+        .y_label_formatter(&|percent| format!("{percent:.0}%"))
+        .draw()?;
+
+    let style = &line_styles[0];
+    chart
+        .draw_series(LineSeries::new(
+            (1..=500).map(|x| {
+                let salary = (x * max_salary) as f64 / 500.0;
+                (salary, table_single.eval(salary) * cantonal_rate / salary)
+            }),
+            style.color,
+        ))?
+        .label("single")
+        .legend(|(x, y)| {
+            EmptyElement::at((x, y))
+                + PathElement::new(vec![(0, 0), (20, 0)], style.color)
+                + style.decorator.decorate((10, 0), style.color)
+        });
+    chart.draw_series(
+        (1..=500)
+            .step_by(50)
+            .map(|x| {
+                let salary = (x * max_salary) as f64 / 500.0;
+                (salary, table_single.eval(salary) * cantonal_rate / salary)
+            })
+            .map(|(x, y)| style.decorator.decorate((x, y), style.color)),
+    )?;
+
+    let style = &line_styles[1];
+    chart
+        .draw_series(LineSeries::new(
+            (1..=500).map(|x| {
+                let salary = (x * max_salary) as f64 / 500.0;
+                (
+                    salary,
+                    table_married.eval_split(salary, splitting) * cantonal_rate / salary,
+                )
+            }),
+            style.color,
+        ))?
+        .label("married")
+        .legend(|(x, y)| {
+            EmptyElement::at((x, y))
+                + PathElement::new(vec![(0, 0), (20, 0)], style.color)
+                + style.decorator.decorate((10, 0), style.color)
+        });
+    chart.draw_series(
+        (1..=500)
+            .skip(25)
+            .step_by(50)
+            .map(|x| {
+                let salary = (x * max_salary) as f64 / 500.0;
+                (
+                    salary,
+                    table_married.eval_split(salary, splitting) * cantonal_rate / salary,
+                )
+            })
+            .map(|(x, y)| style.decorator.decorate((x, y), style.color)),
+    )?;
+
+    chart
+        .configure_series_labels()
+        .position(SeriesLabelPosition::LowerRight)
+        .border_style(BLACK)
+        .background_style(WHITE.filled())
+        .label_font(("sans-serif", 20))
+        .draw()?;
+
+    root.present()?;
+
     Ok(())
 }
 
